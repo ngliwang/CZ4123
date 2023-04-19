@@ -16,6 +16,7 @@ class Cursor:
         self.start = start
         self.end = end
         self.ptr = 0
+        
     def full(self,size:int) -> bool:
         """Check if the partition is full
         """
@@ -31,10 +32,11 @@ class Cursor:
         Returns:
             BitArray: The data read from the main memory
         """        """"""
+        if loc != None:
+            self.set_ptr(loc)
         if self.full(size):
             return None
-        if loc:
-            self.set_ptr(loc)
+
         pos = self.ptr + self.start
         
         data = self.mm[pos:pos + size]
@@ -59,7 +61,7 @@ class Cursor:
         else:
             size = data.len
             
-        if loc:
+        if loc != None:
             self.set_ptr(loc)
         if self.full(size):
             return False
@@ -82,11 +84,21 @@ class Cursor:
             bool: True if the data is read successfully, false otherwise
         """
     
-        if loc:
+        if loc != None:
             f.seek(loc)
+        
+        temp = self.ptr
+        
+        if mm_loc != None:
+            self.set_ptr(mm_loc)
             
-        b = self.file.read(settings.PAGE_SIZE_BYTES)
-        self.write_mm(b, mm_loc)
+        if self.full(settings.PAGE_SIZE_BYTES):
+            self.ptr = temp
+            return False
+        b = f.read(settings.PAGE_SIZE_BYTES)
+        if not b:
+            return False
+        return self.write_mm(b, mm_loc)
     
 
     def write_file(self, f, size = settings.PAGE_SIZE, mm_loc = None):
@@ -100,15 +112,23 @@ class Cursor:
         Raises:
             ValueError: _description_
         """
-        if mm_loc:
+        
+            
+        if mm_loc!= None:
             self.set_ptr(mm_loc)
         if size > settings.PAGE_SIZE:
             raise ValueError("You cannot write more than PAGE_SIZE at a time")
         if self.full(size):
-            size = self.end - mm_loc - self.start
-        b = self.read_mm(size, mm_loc).bytes
-        
-        f.write(b)
+            size = self.end - self.ptr - self.start
+            if size == 0:
+                return False
+            else: raise ValueError("Buffer size mismatch!!!")
+        b = self.read_mm(size, mm_loc)
+        if not b:
+            return False
+        f.write(b.bytes)
+        return True
+            
     
     def set_ptr(self, loc = 0):
         """Set the pointer to a specific position
@@ -121,6 +141,8 @@ class Cursor:
         """Set all the bits in the partition to 0
         """
         self.mm.set(False, range(self.start, self.end))
+
+    
         
 class ColumnReader:
     """High level representation a column of data.
@@ -135,7 +157,9 @@ class ColumnReader:
         """
         self.cur = cursor
         self.file = file
+        self.item_size = item_size
         self.item_per_page = settings.PAGE_SIZE / item_size
+        self.last_batch = False
         
         
     def __iter__(self):
@@ -161,40 +185,75 @@ class ColumnReader:
         if temp:
             return temp
         else:
-            raise StopIteration
+            if not self.last_batch:
+                self.last_batch =self.load()
+                self.cur.set_ptr(0)
+                return self.cur.read_mm(self.item_size)
+            else:
+                raise StopIteration
     
-    def sequential_read(self):
+    def load(self):
         """Fills the main memory with data from the file. 
         """
-        while self.cur.read_file(self.file):
-            pass
-        
-        
-    def random_read(self, index):
-        """Read a specific item from the column file.
+        self.cur.clear()
+        self.cur.set_ptr(0)
+        while True:
+            if self.cur.read_file(self.file):
+                continue
+            else:
+                if not self.cur.full(settings.PAGE_SIZE):
+                    
+                    return True
+                else:
+                    return False
+
+    
+class RandomColumnReader():
+    def __init__(self, file, cursor:Cursor, item_size:int):
+        """Initialize the column reader
 
         Args:
-            index (_type_): Index of the item to read
-
-        Returns:
-            _type_: The item to be read
+            file (_type_): Input file
+            cursor (Cursor): Cursor object to store the data within the main memory
+            item_size (int): Size of each item in the column, in bits
         """
-        file_loc = index * self.item_size // (settings.PAGE_SIZE)
-        page_loc = index * self.item_size // (settings.PAGE_SIZE)
-        if not self.cur.read_file(self.file, file_loc * settings.PAGE_SIZE_BYTES):
-            self.cur.set_ptr(0)
-            self.cur.read_file(self.file, file_loc * settings.PAGE_SIZE_BYTES)
-        return self.cur.read_mm(self.item_size, self.cur.ptr - settings.PAGE_SIZE + page_loc)
-
-
+        self.cur = cursor
+        self.file = file
+        self.item_per_page = settings.PAGE_SIZE / item_size
+        self.current_loaded_pages = {}
+        self.item_size = item_size
+        self.in_mm_page_pos = 0
+        self.num_pages_in_mm =  (self.cur.end - self.cur.start) // settings.PAGE_SIZE
         
-        
-    
-class ColumnWriter:
+    def load_page(self, page_number):
+        if self.in_mm_page_pos >= self.num_pages_in_mm:
+            self.in_mm_page_pos = 0
+        if self.cur.read_file(self.file, page_number * settings.PAGE_SIZE_BYTES, self.in_mm_page_pos * settings.PAGE_SIZE):
+            temp = self.in_mm_page_pos
+            self.current_loaded_pages[self.in_mm_page_pos] = page_number
+            self.cur.ptr = self.in_mm_page_pos * settings.PAGE_SIZE
+            self.in_mm_page_pos +=1
+            return temp
+        return None
+    def __getitem__(self, index):
+
+        page_number = index * self.item_size // (settings.PAGE_SIZE)
+        pos_in_page = index * self.item_size % (settings.PAGE_SIZE)
+        for i in self.current_loaded_pages:
+            if self.current_loaded_pages[i] == page_number:
+                return self.cur.read_mm(self.item_size, i * settings.PAGE_SIZE + pos_in_page)
+        new_page_loc = self.load_page(page_number)
+        if new_page_loc != None:
+            return self.cur.read_mm(self.item_size, new_page_loc * settings.PAGE_SIZE + pos_in_page)
+        return None
+
+            
+class WriteBuffer:
     """Class for writing to a column file
     """
-    def __init__(self, cursor, size):
-        self.cur = cursor
+    def __init__(self, cur:Cursor, size, out_file):
+        self.file = out_file
+        self.cur = cur
         self.item_per_page = settings.PAGE_SIZE / size
         
     def write(self, data):
@@ -215,43 +274,24 @@ class ColumnWriter:
                 pass
             self.cur.clear()
             self.cur.set_ptr(0)
-            self.cur.write_mm(data)
-            
-    def flush(self):
+            return self.cur.write_mm(data)
+        
+    def close(self):
         """Flush the remaining data to the file.
         Always run this after fully writing all the data for the column to this class
         """
-        temp = self.cur.ptr
+        
         self.cur.set_ptr(0)
-        while True:
-            if not self.cur.write_file(self.file):
-                break
-            temp -= settings.PAGE_SIZE
-            if temp < settings.PAGE_SIZE:
-                break
-        self.cur.write.file(self.file, temp)
-            
-        
-        
-        
-            
-    
-        
-        
-        
-class MainMemory:
-    def __init__(self, file = None):
-        self.mm = BitArray(length = settings.MM_SIZE)
-        self.mm_ptr = 0
-        self.file_locations = {
-            "Date": "processed_data/Date.dat",
-            "Station": "processed_data/Date.dat",
-            "Humidity": "processed_data/Humidity.dat",
-            "Temperature": "processed_data/Temperature.dat"
-        }
+        while self.cur.write_file(self.file):
+            pass
+        self.cur.clear()
+        self.cur.set_ptr(0)
+        self.file.close()
 
+            
 
-    
+        
+
     
 if __name__ == "__main__":
     pass
