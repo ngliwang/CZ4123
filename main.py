@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 station_pos_writer = WriteBuffer(Cursor(mm, settings.MM_SIZE - settings.PAGE_SIZE, settings.MM_SIZE), 32, station_pos_f)
                 for year_pos in year_pos_reader:
                     station = from_bits(station_reader[year_pos.uint - 1], "Station")
-                    print("Reading position: ", year_pos.uint, " in station column: " , station)
+                    print("Reading position: ", year_pos.uint, "\t|station : " , station)
                     if station == station_query:
                         station_pos_writer.write(year_pos)
                         
@@ -68,10 +68,10 @@ if __name__ == "__main__":
     min_humid = {}
     max_humid = {}
     for i in range(1, 13):
-        min_temp[i] = (None, 100, None)
-        max_temp[i] = (None, -100, None)
-        min_humid[i] = (None, None, 100)
-        max_humid[i] = (None, None, -100)
+        min_temp[i] = 100
+        max_temp[i] = -100
+        min_humid[i] = 100
+        max_humid[i] = -100
     mm.set(0)
     with open("processed_data/temp/Station.pos", "rb") as station_pos_f:
         month_f = open("processed_data/Month.dat", "rb")
@@ -86,39 +86,63 @@ if __name__ == "__main__":
             month = from_bits(month_reader[pos.uint - 1], "Month")
             temperature = from_bits(temperature_reader[pos.uint - 1], "Temperature")
             humidity = from_bits(humidity_reader[pos.uint - 1], "Humidity")
-            print("Read position: ", pos.uint, " for month: ", month, " temperature: ", temperature, " humidity: ", humidity)
             out = (pos.uint, temperature, humidity)
             if month not in min_temp.keys():
                 continue
             else:
                 if temperature != "M":
-                    if temperature < min_temp[month][1]:
-                        min_temp[month] = out
-                    if temperature > max_temp[month][1]:
-                        max_temp[month] = out
+                    if temperature < min_temp[month]:
+                        min_temp[month] = temperature
+                        print("At position: " , pos.uint, "\tDetected new min temp: ", temperature, " for month: ", month)
+                    if temperature > max_temp[month]:
+                        max_temp[month] = temperature
+                        print("At position: " , pos.uint, "\tDetected new max temp: ", temperature, " for month: ", month)
                 if humidity != "M":
-                    if humidity < min_humid[month][2]:
-                        min_humid[month] = out
-                    if humidity > max_humid[month][2]:
-                        max_humid[month] = out
+                    if humidity < min_humid[month]:
+                        min_humid[month] = humidity
+                        print("At position: " , pos.uint, "\tDetected new min humid: ", humidity, " for month: ", month)
+                    if humidity > max_humid[month]:
+                        max_humid[month] = humidity
+                        print("At position: " , pos.uint, "\tDetected new max humid: ", humidity, " for month: ", month)
         month_f.close()
         temperature_f.close()   
         humidity_f.close()
     print("Month\tMin Temp\tMax Temp\tMin Humid\tMax Humid")
     for i in range(1, 13):
-        print(i, min_temp[i][1], max_temp[i][1], min_humid[i][2], max_humid[i][2], sep = "\t")
+        print(i, min_temp[i], max_temp[i], min_humid[i], max_humid[i], sep = "\t")
     
     mm.set(0)
-    date_reader = RandomColumnReader(open("processed_data/Date.dat", "rb"), Cursor(mm, 0, settings.MM_SIZE), 64)
+    
     print("Writing to file...")
     with open("results/ScanResult_{}.csv".format(matric), "w") as f:
-        f.write("Date,Station,Category,Value\n")
-        for i in range(1, 13):
-            f.write("{},{},{},{}\n".format(from_bits(date_reader[min_temp[i][0] - 1], "Date"), station_query, "Min Temperature", min_temp[i][1]))
-            f.write("{},{},{},{}\n".format(from_bits(date_reader[max_temp[i][0] - 1], "Date"), station_query, "Max Temperature", max_temp[i][1])) 
-            f.write("{},{},{},{}\n".format(from_bits(date_reader[min_humid[i][0] - 1], "Date"), station_query, "Min Humidity", min_humid[i][2]))
-            f.write("{},{},{},{}\n".format(from_bits(date_reader[max_humid[i][0] - 1], "Date"), station_query, "Max Humidity", max_humid[i][2]))
-    mm.set(0)
+        buffer_size = settings.MM_SIZE // 5
+        with open("processed_data/temp/Station.pos", "rb") as station_pos_f:
+            month_f = open("processed_data/Month.dat", "rb")
+            temperature_f = open("processed_data/Temperature.dat", "rb")
+            humidity_f = open("processed_data/Humidity.dat", "rb")
+            date_reader = RandomColumnReader(open("processed_data/Date.dat", "rb"), Cursor(mm, 0, buffer_size), 64)
+            month_reader = RandomColumnReader(month_f, Cursor(mm, 1*buffer_size, 2*buffer_size), 4)
+            temperature_reader = RandomColumnReader(temperature_f, Cursor(mm, 2*buffer_size, 3*buffer_size), 16)
+            humidity_reader = RandomColumnReader(humidity_f, Cursor(mm, 3*buffer_size, 4*buffer_size), 32)
+            station_pos_reader = ColumnReader(station_pos_f, Cursor(mm, 4*buffer_size, 5*buffer_size), 32)
+            f.write("Date,Station,Category,Value\n")
+            for pos in station_pos_reader:
+                month = from_bits(month_reader[pos.uint - 1], "Month")
+                temperature = from_bits(temperature_reader[pos.uint - 1], "Temperature")
+                humidity = from_bits(humidity_reader[pos.uint - 1], "Humidity")
+                
+                if month in range(1, 13):
+                    if temperature == min_temp[month]:
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Temperature", temperature))
+                    if temperature == max_temp[month]:
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Temperature", temperature))
+                    if humidity != "M" and humidity == min_humid[month]:    
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Humidity", humidity))
+                    if humidity != "M" and humidity == max_humid[month]:
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Humidity", humidity))
+                
+                
+        mm.set(0)
     os.remove("processed_data/temp/Year.pos")
     os.remove("processed_data/temp/Station.pos")
     
