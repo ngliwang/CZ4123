@@ -9,6 +9,7 @@ if __name__ == "__main__":
   
     output = {}
     mm = BitArray(length = settings.MM_SIZE)
+    year_reader = RandomColumnReader(open("processed_data/Year.dat", "rb"), Cursor(mm, 0, settings.MM_SIZE - settings.PAGE_SIZE), 16)
     matric = "U2021106D"
     with open("Year_lookup.json", "r") as f:
         lookup = json.load(f)
@@ -61,84 +62,93 @@ if __name__ == "__main__":
                     print("Reading position: ", year_pos.uint, "\t|station : " , station)
                     if station == station_query:
                         station_pos_writer.write(year_pos)
-                        
-                station_pos_writer.close()                    
+                station_pos_writer.close()
+    
     min_temp = {}
     max_temp = {}
     min_humid = {}
     max_humid = {}
-    for i in range(1, 13):
-        min_temp[i] = 100
-        max_temp[i] = -100
-        min_humid[i] = 100
-        max_humid[i] = -100
+    for y in year_query:
+        for i in range(1, 13):
+            min_temp[(int(y), i)] = 100
+            max_temp[(int(y), i)] = -100
+            min_humid[(int(y), i)] = 100
+            max_humid[(int(y), i)] = -100
+            
     mm.set(0)
     with open("processed_data/temp/Station.pos", "rb") as station_pos_f:
         month_f = open("processed_data/Month.dat", "rb")
         temperature_f = open("processed_data/Temperature.dat", "rb")
         humidity_f = open("processed_data/Humidity.dat", "rb")
-        buffer_size = settings.MM_SIZE // 4 - settings.PAGE_SIZE
+        year_f = open("processed_data/Year.dat", "rb")
+        buffer_size = settings.MM_SIZE // 5 - settings.PAGE_SIZE
         station_pos_reader = ColumnReader(station_pos_f, Cursor(mm, 0, 1*buffer_size), 32)
         month_reader = RandomColumnReader(month_f, Cursor(mm, 1*buffer_size, 2*buffer_size), 4)
         temperature_reader = RandomColumnReader(temperature_f, Cursor(mm, 2*buffer_size, 3*buffer_size), 16)
         humidity_reader = RandomColumnReader(humidity_f, Cursor(mm, 3*buffer_size, 4*buffer_size), 32)
+        year_reader = RandomColumnReader(year_f, Cursor(mm, 4*buffer_size, 5*buffer_size), 16)
         for pos in station_pos_reader:
             month = from_bits(month_reader[pos.uint - 1], "Month")
             temperature = from_bits(temperature_reader[pos.uint - 1], "Temperature")
             humidity = from_bits(humidity_reader[pos.uint - 1], "Humidity")
-            out = (pos.uint, temperature, humidity)
-            if month not in min_temp.keys():
+            year = from_bits(year_reader[pos.uint - 1], "Year")
+            if (year, month) not in min_temp.keys():
                 continue
             else:
                 if temperature != "M":
-                    if temperature < min_temp[month]:
-                        min_temp[month] = temperature
-                        print("At position: " , pos.uint, "\tDetected new min temp: ", temperature, " for month: ", month)
-                    if temperature > max_temp[month]:
-                        max_temp[month] = temperature
-                        print("At position: " , pos.uint, "\tDetected new max temp: ", temperature, " for month: ", month)
+                    if temperature < min_temp[(year, month)]:
+                        min_temp[(year, month)] = temperature
+                        print("At position: " , pos.uint, "\tDetected new min temp: ", temperature, " for month: ", month, "/", year)
+                    if temperature > max_temp[(year, month)]:
+                        max_temp[(year, month)] = temperature
+                        print("At position: " , pos.uint, "\tDetected new max temp: ", temperature, " for month: ", month, "/", year)
                 if humidity != "M":
-                    if humidity < min_humid[month]:
-                        min_humid[month] = humidity
-                        print("At position: " , pos.uint, "\tDetected new min humid: ", humidity, " for month: ", month)
-                    if humidity > max_humid[month]:
-                        max_humid[month] = humidity
-                        print("At position: " , pos.uint, "\tDetected new max humid: ", humidity, " for month: ", month)
+                    if humidity < min_humid[(year, month)]:
+                        min_humid[(year, month)] = humidity
+                        print("At position: " , pos.uint, "\tDetected new min humid: ", humidity, " for month: ", month, "/", year)
+                    if humidity > max_humid[(year, month)]:
+                        max_humid[(year, month)] = humidity
+                        print("At position: " , pos.uint, "\tDetected new max humid: ", humidity, " for month: ", month, "/", year)
         month_f.close()
         temperature_f.close()   
         humidity_f.close()
-    print("Month\tMin Temp\tMax Temp\tMin Humid\tMax Humid")
-    for i in range(1, 13):
-        print(i, min_temp[i], max_temp[i], min_humid[i], max_humid[i], sep = "\t")
-    
+    print("Year\tMonth\tMin Temp\tMax Temp\tMin Humid\tMax Humid")
+    for year in year_query:
+        for i in range(1, 13):
+            print(year, i, min_temp[(int(year), i)], max_temp[(int(year), i)], min_humid[(int(year), i)], max_humid[(int(year), i)], sep = "\t")
+        
     mm.set(0)
     
     print("Writing to file...")
     with open("results/ScanResult_{}.csv".format(matric), "w") as f:
-        buffer_size = settings.MM_SIZE // 5
+        buffer_size = settings.MM_SIZE // 8
         with open("processed_data/temp/Station.pos", "rb") as station_pos_f:
             month_f = open("processed_data/Month.dat", "rb")
             temperature_f = open("processed_data/Temperature.dat", "rb")
             humidity_f = open("processed_data/Humidity.dat", "rb")
+            year_f = open("processed_data/Year.dat", "rb")
             date_reader = RandomColumnReader(open("processed_data/Date.dat", "rb"), Cursor(mm, 0, buffer_size), 64)
             month_reader = RandomColumnReader(month_f, Cursor(mm, 1*buffer_size, 2*buffer_size), 4)
             temperature_reader = RandomColumnReader(temperature_f, Cursor(mm, 2*buffer_size, 3*buffer_size), 16)
             humidity_reader = RandomColumnReader(humidity_f, Cursor(mm, 3*buffer_size, 4*buffer_size), 32)
             station_pos_reader = ColumnReader(station_pos_f, Cursor(mm, 4*buffer_size, 5*buffer_size), 32)
+            year_reader = RandomColumnReader(year_f, Cursor(mm, 5*buffer_size, 6*buffer_size), 16)
+            
             f.write("Date,Station,Category,Value\n")
             for pos in station_pos_reader:
                 month = from_bits(month_reader[pos.uint - 1], "Month")
                 temperature = from_bits(temperature_reader[pos.uint - 1], "Temperature")
                 humidity = from_bits(humidity_reader[pos.uint - 1], "Humidity")
+                year = from_bits(year_reader[pos.uint - 1], "Year")
                 
-                if month in range(1, 13):
-                    if temperature == min_temp[month]:
+                if month in range(1, 13) and str(year) in year_query:
+                    if temperature == min_temp[(year,month)]:
                         f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Temperature", temperature))
-                    if temperature == max_temp[month]:
+                    if temperature == max_temp[(year,month)]:
                         f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Temperature", temperature))
-                    if humidity != "M" and humidity == min_humid[month]:    
+                    if humidity != "M" and humidity == min_humid[(year,month)]:    
                         f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Humidity", humidity))
-                    if humidity != "M" and humidity == max_humid[month]:
+                    if humidity != "M" and humidity == max_humid[(year,month)]:
                         f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Humidity", humidity))
                 
                 

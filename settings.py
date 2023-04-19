@@ -6,4 +6,5 @@ if PAGE_SIZE % 8 != 0:
     raise ValueError("Disk page size should be a multiple of 8")
 
 if __name__ == "__main__":
-    print(int("M"))
+    l = {(1, 2): 3}
+    print(l)
