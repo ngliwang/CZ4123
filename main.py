@@ -9,7 +9,7 @@ if __name__ == "__main__":
   
     output = {}
     mm = BitArray(length = settings.MM_SIZE)
-    matric = "U1234567F"
+    matric = "U2021106D"
     with open("Year_lookup.json", "r") as f:
         lookup = json.load(f)
     year_query = []
@@ -114,10 +114,10 @@ if __name__ == "__main__":
     with open("results/ScanResult_{}.csv".format(matric), "w") as f:
         f.write("Date,Station,Category,Value\n")
         for i in range(1, 13):
-            f.write("{},{},{},{}\n".format(date_reader[min_temp[i][0] - 1].uint, station_query, "Min Temperature", min_temp[i][1]))
-            f.write("{},{},{},{}\n".format(date_reader[max_temp[i][0] - 1].uint, station_query, "Max Temperature", max_temp[i][1]))
-            f.write("{},{},{},{}\n".format(date_reader[min_humid[i][0] - 1].uint, station_query, "Min Humidity", min_humid[i][2]))
-            f.write("{},{},{},{}\n".format(date_reader[max_humid[i][0] - 1].uint, station_query, "Max Humidity", max_humid[i][2]))
+            f.write("{},{},{},{}\n".format(from_bits(date_reader[min_temp[i][0] - 1], "Date"), station_query, "Min Temperature", min_temp[i][1]))
+            f.write("{},{},{},{}\n".format(from_bits(date_reader[max_temp[i][0] - 1], "Date"), station_query, "Max Temperature", max_temp[i][1])) 
+            f.write("{},{},{},{}\n".format(from_bits(date_reader[min_humid[i][0] - 1], "Date"), station_query, "Min Humidity", min_humid[i][2]))
+            f.write("{},{},{},{}\n".format(from_bits(date_reader[max_humid[i][0] - 1], "Date"), station_query, "Max Humidity", max_humid[i][2]))
     mm.set(0)
     os.remove("processed_data/temp/Year.pos")
     os.remove("processed_data/temp/Station.pos")
