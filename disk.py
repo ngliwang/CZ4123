@@ -1,6 +1,8 @@
 from bitstring import BitArray
 import settings
-
+from typing import Union
+import os
+import csv
         
 class Cursor:
     """Accessor for the main memory, function as a partition of the main memory"""
@@ -45,7 +47,7 @@ class Cursor:
             return data
         return None
         
-    def write_mm(self, data: BitArray|bytes, loc:int = None)->bool:
+    def write_mm(self, data: Union[BitArray, bytes], loc:int = None)->bool:
         """write data to the main memory
 
         Args:
@@ -141,6 +143,27 @@ class Cursor:
         """Set all the bits in the partition to 0
         """
         self.mm.set(False, range(self.start, self.end))
+
+    def remove(matric):
+        input_file = "results/ScanResult_{}.csv".format(matric)
+        output_file = "results/ScanResult_{}.csv".format(matric)
+
+        if not os.path.exists("results"):
+            os.makedirs("results")
+
+        unique_rows = set()
+
+        with open(input_file, "r") as input_csv:
+            reader = csv.reader(input_csv)
+            header = next(reader)
+
+            for row in reader:
+                unique_rows.add(tuple(row))
+
+        with open(output_file, "w", newline="") as output_csv:
+            writer = csv.writer(output_csv)
+            writer.writerow(header)
+            writer.writerows(unique_rows)
 
     
         

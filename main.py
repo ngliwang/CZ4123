@@ -6,11 +6,15 @@ s = BitArray(length = 10)
 from disk import *
 from init import *
 if __name__ == "__main__":
+
+    # make a temp folder at processed_data if it does not exist
+    if not os.path.exists("processed_data/temp"):
+        os.makedirs("processed_data/temp")
   
     output = {}
     mm = BitArray(length = settings.MM_SIZE)
     year_reader = RandomColumnReader(open("processed_data/Year.dat", "rb"), Cursor(mm, 0, settings.MM_SIZE - settings.PAGE_SIZE), 16)
-    matric = "U2021106D"
+    matric = "U1921246F"
     with open("Year_lookup.json", "r") as f:
         lookup = json.load(f)
     year_query = []
@@ -143,16 +147,16 @@ if __name__ == "__main__":
                 
                 if month in range(1, 13) and str(year) in year_query:
                     if temperature == min_temp[(year,month)]:
-                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Temperature", temperature))
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date")[:10], station_query, "Min Temperature", temperature))
                     if temperature == max_temp[(year,month)]:
-                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Temperature", temperature))
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date")[:10], station_query, "Max Temperature", temperature))
                     if humidity != "M" and humidity == min_humid[(year,month)]:    
-                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Min Humidity", humidity))
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date")[:10], station_query, "Min Humidity", round(humidity,2)))
                     if humidity != "M" and humidity == max_humid[(year,month)]:
-                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date"), station_query, "Max Humidity", humidity))
-                
-                
-        mm.set(0)
+                        f.write("{},{},{},{}\n".format(from_bits(date_reader[pos.uint - 1], "Date")[:10], station_query, "Max Humidity", round(humidity,2)))
+    
+    # Cursor.remove(matric)
+    mm.set(0)
     os.remove("processed_data/temp/Year.pos")
     os.remove("processed_data/temp/Station.pos")
     
